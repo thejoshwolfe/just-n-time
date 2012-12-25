@@ -17,6 +17,8 @@ Chem.onReady ->
   # GIMME THE FIZZAQS!
   world = null
   ship_body = null
+  time_scale = 1
+  paused = false
   let
     gravity = new b2Vec2 0, 20
     world := new b2World gravity, true
@@ -53,12 +55,20 @@ Chem.onReady ->
     ship_body.CreateFixture fixture_definition
 
   engine.on 'update', (dt, dx) ->
-    world.Step dt, 1, 1
-    world.ClearForces!
+    paused := !paused if engine.buttonJustPressed Chem.Button.Key_Space
+    if engine.buttonJustPressed Chem.Button.Key_1
+      if engine.buttonState Chem.Button.Key_Shift
+        time_scale *= 0.5
+      else
+        time_scale *= 2
 
-    # JOMP!
-    if engine.buttonJustPressed Chem.Button.Key_Space
-      ship_body.ApplyForce new b2Vec2(0, -2000), ship_body.m_xf.position
+    if not paused
+      if engine.buttonJustPressed Chem.Button.Key_Up
+        ship_body.ApplyImpulse new b2Vec2(0, -50), ship_body.m_xf.position
+
+      world.Step time_scale*dt, 1, 1
+      world.ClearForces!
+
 
   engine.on 'draw', (context) ->
     world.DrawDebugData!
@@ -67,6 +77,8 @@ Chem.onReady ->
     context.fillStyle = '#000'
     engine.drawFps!
 
+    context.fillText "#{if paused then "paused" else "running"}", 100, engine.size.y
+    context.fillText "time_scale=#{Math.round(time_scale*100)/100}", 200, engine.size.y
   engine.start!
   canvas.focus!
 
