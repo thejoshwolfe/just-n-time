@@ -17,10 +17,13 @@ Chem.onReady ->
   # GIMME THE FIZZAQS!
   world = null
   ship_body = null
-  time_scale = 1
+  time_scale_exponent = 2
+  time_scale = -> Math.pow 2, time_scale_exponent
+  const min_dt = 1/60
   paused = false
+  physics_per_second = 0
   let
-    gravity = new b2Vec2 0, 20
+    gravity = new b2Vec2 0, 1
     world := new b2World gravity, true
 
     debug_drawer = new b2DebugDraw()
@@ -54,31 +57,54 @@ Chem.onReady ->
     ship_body := world.CreateBody body_definition
     ship_body.CreateFixture fixture_definition
 
-  engine.on 'update', (dt, dx) ->
+  engine.on 'update', (real_dt, dx) ->
     paused := !paused if engine.buttonJustPressed Chem.Button.Key_Space
     if engine.buttonJustPressed Chem.Button.Key_1
       if engine.buttonState Chem.Button.Key_Shift
-        time_scale *= 0.5
+        time_scale_exponent--
       else
-        time_scale *= 2
+        time_scale_exponent++
+      time_scale_exponent := clamp time_scale_exponent, 0, 4
 
     if not paused
       if engine.buttonJustPressed Chem.Button.Key_Up
-        ship_body.ApplyImpulse new b2Vec2(0, -50), ship_body.m_xf.position
+        ship_body.ApplyImpulse new b2Vec2(0, -10), ship_body.m_xf.position
 
-      world.Step time_scale*dt, 1, 1
-      world.ClearForces!
+      # catch up the world to what we expect
+      dt = 0
+      limit = real_dt * time_scale!
+      physics = 0
+      while dt < limit
+        world.Step min_dt, 1, 1
+        world.ClearForces!
+        dt += min_dt
+        physics++
+      physics_per_second := physics / real_dt
 
 
   engine.on 'draw', (context) ->
     world.DrawDebugData!
 
     # draw a little fps counter in the corner
+    cursor = 0
     context.fillStyle = '#000'
-    engine.drawFps!
 
-    context.fillText "#{if paused then "paused" else "running"}", 100, engine.size.y
-    context.fillText "time_scale=#{Math.round(time_scale*100)/100}", 200, engine.size.y
+    engine.drawFps!
+    cursor += 100
+
+    context.fillText "phys/s=#{Math.round(physics_per_second)}", cursor, engine.size.y
+    cursor += 100
+
+    context.fillText "#{if paused then "paused" else "running"}", cursor, engine.size.y
+    cursor += 100
+
+    context.fillText "time_scale=#{Math.round(time_scale!*25)/100}", cursor, engine.size.y
+    cursor += 100
+
   engine.start!
   canvas.focus!
 
+clamp = (n, min, max) ->
+  return min if n < min
+  return max if n > max
+  return n
