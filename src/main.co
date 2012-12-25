@@ -16,7 +16,7 @@ Chem.onReady ->
 
   # GIMME THE FIZZAQS!
   world = null
-  ship_body = null
+  main_body = null
   time_scale_index = 2
   get_time_scale = ->
     return  Math.pow 2,  time_scale_index if time_scale_index > 0
@@ -41,7 +41,7 @@ Chem.onReady ->
     fixture_definition = new b2FixtureDef!
     fixture_definition.density = 1.0
     fixture_definition.friction = 0.5
-    fixture_definition.restitution = 0
+    fixture_definition.restitution = 0.2
 
     body_definition = new b2BodyDef!
 
@@ -58,9 +58,15 @@ Chem.onReady ->
     fixture_definition.shape = new b2CircleShape 1
     body_definition.position.x = 5
     body_definition.position.y = 5
-    ship_body := world.CreateBody body_definition
-    ship_body.CreateFixture fixture_definition
-    bodies.push ship_body
+    main_body := world.CreateBody body_definition
+    main_body.CreateFixture fixture_definition
+    bodies.push main_body
+
+    body_definition.position.x = 4
+    body_definition.position.y = 3
+    body = world.CreateBody body_definition
+    body.CreateFixture fixture_definition
+    bodies.push body
 
   engine.on 'update', (real_dt, dx) ->
     if engine.buttonJustPressed Chem.Button.Key_1
@@ -73,7 +79,7 @@ Chem.onReady ->
 
     if time_scale > 0
       if engine.buttonJustPressed Chem.Button.Key_Up
-        ship_body.ApplyImpulse new b2Vec2(0, -10), ship_body.m_xf.position
+        main_body.ApplyImpulse new b2Vec2(0, -10), main_body.m_xf.position
 
     # catch up the world to what we expect
     physics = 0
