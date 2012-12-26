@@ -10,22 +10,102 @@ const b2DebugDraw = Box2D.Dynamics.b2DebugDraw
 const b2PolygonShape = Box2D.Collision.Shapes.b2PolygonShape
 const b2CircleShape = Box2D.Collision.Shapes.b2CircleShape
 
+class Time
+  (@world) ~>
+    @speed = 0
+    @body_definitions = []
+    @history = []
+
+  add_rectangle: !(x, y, half_width, half_height) ->
+    body_definition = new b2BodyDef!
+    body_definition.position.x = x
+    body_definition.position.y = y
+    fixture_definition = new b2FixtureDef!
+    fixture_definition.density = 1.0
+    fixture_definition.friction = 0.5
+    fixture_definition.restitution = 0.2
+    fixture_definition.shape = new b2PolygonShape!
+    fixture_definition.shape.SetAsBox half_width, half_height
+    @body_definitions.push {body_definition, fixture_definition}
+
+  add_circle: !(x, y, radius) ->
+    body_definition = new b2BodyDef!
+    body_definition.position.x = x
+    body_definition.position.y = y
+    fixture_definition = new b2FixtureDef!
+    fixture_definition.density = 1.0
+    fixture_definition.friction = 0.5
+    fixture_definition.restitution = 0.2
+    fixture_definition.shape = new b2CircleShape radius
+    @body_definitions.push {body_definition, fixture_definition}
+
+  init: ->
+    @create_bodies b2Body.b2_staticBody
+    @store_history!
+    @initial_frame = @history[0]
+
+  create_bodies: !(type) ->
+    for definition of @body_definitions
+      @world.DestroyBody definition.body if definition.body?
+      definition.body_definition.type = type
+      definition.body = @world.CreateBody definition.body_definition
+      definition.body.CreateFixture definition.fixture_definition
+
+  speed_up: !->
+    return if @speed >= 1
+    @speed++
+    if @speed is 1
+      # get these suckers going
+      @create_bodies b2Body.b2_dynamicBody
+      @restore_from_history 1, @history[@history.length-1]
+  slow_down: !->
+    return if @speed <= -1
+    @speed--
+    if @speed is 0
+      # turn these bodies into oblivious kinematics
+      @create_bodies b2Body.b2_kinematicBody
+      @restore_from_history 0, @history[@history.length-1]
+
+  step: !->
+    if @speed > 0
+      @store_history!
+    else if @speed < 0
+      @restore_from_history -1, @history.pop!
+
+  store_history: !->
+    history_frame = []
+    for definition of @body_definitions
+      body = definition.body
+      history_frame.push(
+        position: body.GetPosition!.Copy!
+        angle: body.GetAngle!
+        velocity: body.GetLinearVelocity!.Copy!
+        angular_velocity: body.GetAngularVelocity!
+      )
+    @history.push history_frame
+
+  restore_from_history: !(velocity_scale, history_frame) ->
+    history_frame ?= @initial_frame
+    for state, i of history_frame
+      @body_definitions[i].body.SetPositionAndAngle state.position, state.angle
+      @body_definitions[i].body.SetLinearVelocity scale state.velocity, velocity_scale
+      @body_definitions[i].body.SetAngularVelocity state.angular_velocity * velocity_scale
+
+function scale(vector, scalar)
+  answer = vector.Copy!
+  answer.x *= scalar
+  answer.y *= scalar
+  answer
+
 Chem.onReady ->
   const canvas = document.getElementById "game"
   const engine = new Chem.Engine canvas
 
   # GIMME THE FIZZAQS!
   world = null
-  main_body = null
-  time_scale_index = 2
-  get_time_scale = ->
-    return  Math.pow 2,  time_scale_index if time_scale_index > 0
-    return -Math.pow 2, -time_scale_index if time_scale_index < 0
-    return 0
   const min_dt = 1/60
   physics_per_second = 0
-  bodies = []
-  bodies_history = []
+  times = []
   let
     gravity = new b2Vec2 0, 1
     world := new b2World gravity, true
@@ -38,83 +118,35 @@ Chem.onReady ->
     debug_drawer.SetFlags b2DebugDraw.e_shapeBit | b2DebugDraw.e_jointBit
     world.SetDebugDraw debug_drawer
 
-    fixture_definition = new b2FixtureDef!
-    fixture_definition.density = 1.0
-    fixture_definition.friction = 0.5
-    fixture_definition.restitution = 0.2
+    for _ from 0 to 2
+      times.push new Time world
 
-    body_definition = new b2BodyDef!
+    times[0].add_rectangle 9, 13, 10, 0.5
+    times[1].add_circle 8, 3, 1
+    times[2].add_circle 9, 5, 1
 
-    # create ground
-    body_definition.type = b2Body.b2_staticBody
-    body_definition.position.x = 9
-    body_definition.position.y = 13
-    fixture_definition.shape = new b2PolygonShape!
-    fixture_definition.shape.SetAsBox 10, 0.5
-    world.CreateBody(body_definition).CreateFixture fixture_definition
-
-    # create some objects
-    body_definition.type = b2Body.b2_dynamicBody
-    fixture_definition.shape = new b2CircleShape 1
-    body_definition.position.x = 5
-    body_definition.position.y = 5
-    main_body := world.CreateBody body_definition
-    main_body.CreateFixture fixture_definition
-    bodies.push main_body
-
-    body_definition.position.x = 4
-    body_definition.position.y = 3
-    body = world.CreateBody body_definition
-    body.CreateFixture fixture_definition
-    bodies.push body
+    for time of times
+      time.init!
 
   engine.on 'update', (real_dt, dx) ->
-    if engine.buttonJustPressed Chem.Button.Key_1
-      if engine.buttonState Chem.Button.Key_Shift
-        time_scale_index--
-      else
-        time_scale_index++
-      time_scale_index := clamp time_scale_index, -4, 4
-    time_scale = get_time_scale!
-
-    if time_scale > 0
-      if engine.buttonJustPressed Chem.Button.Key_Up
-        main_body.ApplyImpulse new b2Vec2(0, -10), main_body.m_xf.position
+    for time, i of times
+      # time 0 is the statics
+      continue if i is 0
+      if engine.buttonJustPressed Chem.Button["Key_#{i}"]
+        if engine.buttonState Chem.Button.Key_Shift
+          time.slow_down!
+        else
+          time.speed_up!
 
     # catch up the world to what we expect
-    physics = 0
-    dt = 0
-    limit = real_dt * time_scale
-    if time_scale > 0
-      while dt < limit
-        step min_dt
-        dt += min_dt
-        physics++
-    else if time_scale < 0
-      while dt > limit
-        step_backwards!
-        dt -= min_dt
-    physics_per_second := physics / real_dt
+    total_dt = 0
+    while total_dt < real_dt
+      world.Step min_dt, 1, 1
+      for time of times
+        time.step!
+      world.ClearForces!
+      total_dt += min_dt
 
-  step = !(dt) ->
-    world.Step dt, 1, 1
-    history_frame = []
-    for body of bodies
-      history_frame.push(
-        position: body.GetPosition!.Copy!
-        angle: body.GetAngle!
-        velocity: body.GetLinearVelocity!.Copy!
-        angular_velocity: body.GetAngularVelocity!
-      )
-    bodies_history.push history_frame
-    world.ClearForces!
-  step_backwards = !->
-    history_frame = bodies_history.pop!
-    if history_frame?
-      for state, i of history_frame
-        bodies[i].SetPositionAndAngle state.position, state.angle
-        bodies[i].SetLinearVelocity state.velocity
-        bodies[i].SetAngularVelocity state.angular_velocity
 
   engine.on 'draw', (context) ->
     world.DrawDebugData!
@@ -126,13 +158,10 @@ Chem.onReady ->
     engine.drawFps!
     cursor += 100
 
-    context.fillText "phys/s=#{Math.round(physics_per_second)}", cursor, engine.size.y
+    context.fillText "speed=#{times[1].speed},#{times[2].speed}", cursor, engine.size.y
     cursor += 100
 
-    context.fillText "time_scale=#{Math.round(get_time_scale!*25)/100}", cursor, engine.size.y
-    cursor += 100
-
-    context.fillText "history=#{bodies_history.length}", cursor, engine.size.y
+    context.fillText "history=#{times[1].history.length},#{times[2].history.length}", cursor, engine.size.y
     cursor += 100
 
   engine.start!
