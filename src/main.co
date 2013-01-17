@@ -152,17 +152,29 @@ Chem.onReady ->
     world.DrawDebugData!
 
     # draw a little fps counter in the corner
-    cursor = 0
     context.fillStyle = '#000'
-
     engine.drawFps!
-    cursor += 100
 
-    context.fillText "speed=#{times[1].speed},#{times[2].speed}", cursor, engine.size.y
-    cursor += 100
-
-    context.fillText "history=#{times[1].history.length},#{times[2].history.length}", cursor, engine.size.y
-    cursor += 100
+    # UI is on the right
+    ui_width = 200
+    ui_left = engine.size.x - ui_width
+    bar_heith = 30
+    bar_spacing = 10
+    for time, i of times
+      continue if i is 0
+      top = i*(bar_heith + bar_spacing)
+      # background
+      context.fillStyle = "rgba(0,0,0,0.25)"
+      context.fillRect ui_left, top, ui_width, bar_heith
+      # history
+      if time.speed > 0
+        context.fillStyle = "rgba(0,256,0,0.5)"
+      else if time.speed is 0
+        context.fillStyle = "rgba(256,0,0,0.5)"
+      else
+        context.fillStyle = "rgba(0,0,256,0.5)"
+      history_percent = time.history.length / 1000
+      context.fillRect ui_left, top, ui_width*history_percent, bar_heith
 
   engine.start!
   canvas.focus!
