@@ -109,14 +109,19 @@ Chem.onReady ->
     gravity = new b2Vec2 0, 1
     world := new b2World gravity, true
 
-    for _ from 0 to 2
-      times.push new Time world
+    for i from 0 to 4
+      times.push time = new Time world
+      continue if i is 0
+      for _ from 1 to 3
+        Math.random!
+        time.add_circle 2+Math.random!*18, 2+Math.random!*9, Math.random!*0.5+0.5
 
+    # the ground
     times.0.add_rectangle 9, 13, 10, 0.5
-    times.1.add_circle 8, 3, 1
     times.1.color = [0xff,0,0]
-    times.2.add_circle 9, 5, 1
     times.2.color = [0,0xff,0]
+    times.3.color = [0,0,0xff]
+    times.4.color = [0xff,0xff,0]
 
     for time of times
       time.init!
