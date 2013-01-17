@@ -15,6 +15,6 @@
     "coco": "~0.7.6"
   },
   "scripts": {
-    "dev": "npm install . && chem dev"
+    "dev": "npm install . && chem dev --port=53182"
   }
 }
