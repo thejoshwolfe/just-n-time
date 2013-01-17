@@ -6,15 +6,14 @@ const b2BodyDef = Box2D.Dynamics.b2BodyDef
 const b2Body = Box2D.Dynamics.b2Body
 const b2FixtureDef = Box2D.Dynamics.b2FixtureDef
 const b2World = Box2D.Dynamics.b2World
-const b2DebugDraw = Box2D.Dynamics.b2DebugDraw
-const b2PolygonShape = Box2D.Collision.Shapes.b2PolygonShape
-const b2CircleShape = Box2D.Collision.Shapes.b2CircleShape
+const {b2Shape, b2PolygonShape, b2CircleShape} = Box2D.Collision.Shapes
 
 class Time
   (@world) ~>
     @speed = 0
     @body_definitions = []
     @history = []
+    @color = [0,0,0]
 
   add_rectangle: !(x, y, half_width, half_height) ->
     body_definition = new b2BodyDef!
@@ -110,20 +109,14 @@ Chem.onReady ->
     gravity = new b2Vec2 0, 1
     world := new b2World gravity, true
 
-    debug_drawer = new b2DebugDraw()
-    debug_drawer.SetSprite canvas.getContext "2d"
-    debug_drawer.SetDrawScale 32
-    debug_drawer.SetFillAlpha 0.5
-    debug_drawer.SetLineThickness 1
-    debug_drawer.SetFlags b2DebugDraw.e_shapeBit | b2DebugDraw.e_jointBit
-    world.SetDebugDraw debug_drawer
-
     for _ from 0 to 2
       times.push new Time world
 
-    times[0].add_rectangle 9, 13, 10, 0.5
-    times[1].add_circle 8, 3, 1
-    times[2].add_circle 9, 5, 1
+    times.0.add_rectangle 9, 13, 10, 0.5
+    times.1.add_circle 8, 3, 1
+    times.1.color = [0xff,0,0]
+    times.2.add_circle 9, 5, 1
+    times.2.color = [0,0xff,0]
 
     for time of times
       time.init!
@@ -149,7 +142,41 @@ Chem.onReady ->
 
 
   engine.on 'draw', (context) ->
-    world.DrawDebugData!
+    context.fillStyle = '#fff'
+    context.clearRect 0, 0, engine.size.x, engine.size.y
+
+    # if we apply the scale as a transformation, it will affect the width of strokes.
+    scale = 32
+    for time of times
+      context.fillStyle = "rgba(#{time.color},0.5)"
+      context.strokeStyle = "rgba(#{time.color},0.9)"
+      for {body, fixture_definition} of time.body_definitions
+        {shape} = fixture_definition
+        switch shape.m_type
+          case b2Shape.e_circleShape
+            center = body.GetPosition!
+            radius = shape.m_radius;
+            angle = body.GetAngle!
+            context.moveTo 0, 0
+            context.beginPath!
+            context.arc scale*center.x, scale*center.y, scale*radius, 0, Math.PI * 2, true
+            context.moveTo scale*center.x, scale*center.y
+            context.lineTo scale*(center.x + radius*Math.cos angle), scale*(center.y + radius*Math.sin angle)
+            context.closePath!
+            context.fill!
+            context.stroke!
+          case b2Shape.e_polygonShape
+            center = body.GetPosition!
+            vertexes = shape.GetVertices!.slice(0, shape.GetVertexCount!)
+            v0 = vertexes.0
+            context.beginPath!
+            context.moveTo scale*(center.x+v0.x), scale*(center.y+v0.y)
+            for v of vertexes
+              context.lineTo scale*(center.x+v.x), scale*(center.y+v.y)
+            context.lineTo scale*(center.x+v0.x), scale*(center.y+v0.y)
+            context.closePath!
+            context.fill!
+            context.stroke!
 
     # draw a little fps counter in the corner
     context.fillStyle = '#000'
@@ -167,14 +194,21 @@ Chem.onReady ->
       context.fillStyle = "rgba(0,0,0,0.25)"
       context.fillRect ui_left, top, ui_width, bar_heith
       # history
-      if time.speed > 0
-        context.fillStyle = "rgba(0,256,0,0.5)"
-      else if time.speed is 0
-        context.fillStyle = "rgba(256,0,0,0.5)"
-      else
-        context.fillStyle = "rgba(0,0,256,0.5)"
+      context.fillStyle = "rgba(#{time.color},0.5)"
       history_percent = time.history.length / 1000
-      context.fillRect ui_left, top, ui_width*history_percent, bar_heith
+      history_width = ui_width*history_percent
+      context.fillRect ui_left, top, history_width, bar_heith
+      # speed
+      context.fillStyle = "rgba(#{time.color},0.9)"
+      context.strokeStyle = '#000'
+      context.beginPath!
+      context.moveTo ui_left+history_width, top
+      context.lineTo ui_left+history_width, top+bar_heith
+      context.lineTo ui_left+history_width+time.speed*bar_heith/2, top+bar_heith/2
+      context.lineTo ui_left+history_width, top
+      context.closePath!
+      context.fill!
+      context.stroke!
 
   engine.start!
   canvas.focus!
