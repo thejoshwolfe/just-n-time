@@ -11,12 +11,13 @@ class Time
     @speed = 0
     @elapsed = 0
     @max_elapsed = 1000
-    @body_definitions = []
+    @bodies = []
     @history = []
     @color = [0,0,0]
 
   add_rectangle: !(x, y, half_width, half_height) ->
     body_definition = new b2BodyDef!
+    body_definition.type = b2Body.b2_staticBody
     body_definition.position.x = x
     body_definition.position.y = y
     fixture_definition = new b2FixtureDef!
@@ -25,10 +26,13 @@ class Time
     fixture_definition.restitution = 0.2
     fixture_definition.shape = new b2PolygonShape!
     fixture_definition.shape.SetAsBox half_width, half_height
-    @body_definitions.push {body_definition, fixture_definition}
+    body = @world.CreateBody body_definition
+    body.CreateFixture fixture_definition
+    @bodies.push body
 
   add_circle: !(x, y, radius) ->
     body_definition = new b2BodyDef!
+    body_definition.type = b2Body.b2_staticBody
     body_definition.position.x = x
     body_definition.position.y = y
     fixture_definition = new b2FixtureDef!
@@ -36,38 +40,41 @@ class Time
     fixture_definition.friction = 0.5
     fixture_definition.restitution = 0.2
     fixture_definition.shape = new b2CircleShape radius
-    @body_definitions.push {body_definition, fixture_definition}
+    body = @world.CreateBody body_definition
+    body.CreateFixture fixture_definition
+    @bodies.push body
 
   init: ->
-    @create_bodies b2Body.b2_staticBody
-    @store_history!
+    @store_history 1
     @initial_frame = @history[0]
 
-  create_bodies: !(type) ->
-    for definition of @body_definitions
-      @world.DestroyBody definition.body if definition.body?
-      definition.body_definition.type = type
-      definition.body = @world.CreateBody definition.body_definition
-      definition.body.CreateFixture definition.fixture_definition
+  set_body_type: !(type) ->
+    for body of @bodies
+      body.SetType type
 
   accelerate: !(acceleration) ->
     old_speed = @speed
     @speed = clamp @speed+acceleration, -1, 1
     if old_speed <= 0 and @speed > 0
       # get these suckers going
-      @create_bodies b2Body.b2_dynamicBody
+      @set_body_type b2Body.b2_dynamicBody
       @load_history_frame @history[@history.length-1]
     else if old_speed > 0 and @speed <= 0
       # turn these bodies into oblivious kinematics
-      @create_bodies b2Body.b2_kinematicBody
+      @set_body_type b2Body.b2_kinematicBody
       @load_history_frame @history[@history.length-1]
-    @set_body_speeds!
+    else if old_speed > 0 and @speed > 0
+      # adjust speed of moving objects
+      @scale_body_speeds @speed/old_speed
+    else if @speed is 0
+      # TODO: we shouldn't have to do this.
+      @scale_body_speeds 0
 
-  set_body_speeds: !->
+  scale_body_speeds: !(factor=@speed) ->
     # adjust the bodies to their new speed
-    for {body} of @body_definitions
-      body.SetLinearVelocity scale body.GetLinearVelocity!, @speed
-      body.SetAngularVelocity body.GetAngularVelocity! * @speed
+    for body of @bodies
+      body.SetLinearVelocity scale body.GetLinearVelocity!.Copy!, factor
+      body.SetAngularVelocity body.GetAngularVelocity! * factor
 
   step: !->
     @elapsed += @speed
@@ -80,25 +87,26 @@ class Time
       @store_history!
     if @history.length - 1 >= @elapsed
       @load_history_frame @history.pop!
-      @set_body_speeds!
 
-  store_history: !->
+  store_history: !(speed=@speed) ->
     history_frame = []
-    for {body} of @body_definitions
+    for body of @bodies
       history_frame.push(
         position: body.GetPosition!.Copy!
         angle: body.GetAngle!
-        velocity: body.GetLinearVelocity!.Copy!
-        angular_velocity: body.GetAngularVelocity!
+        # store the velocity as if we were traveling at normal speed
+        velocity: scale body.GetLinearVelocity!.Copy!, 1/speed
+        angular_velocity: body.GetAngularVelocity! / speed
       )
     @history.push history_frame
 
   load_history_frame: !(history_frame) ->
     history_frame ?= @initial_frame
     for state, i of history_frame
-      @body_definitions[i].body.SetPositionAndAngle state.position, state.angle
-      @body_definitions[i].body.SetLinearVelocity state.velocity
-      @body_definitions[i].body.SetAngularVelocity state.angular_velocity
+      @bodies[i].SetPositionAndAngle state.position, state.angle
+      @bodies[i].SetLinearVelocity state.velocity
+      @bodies[i].SetAngularVelocity state.angular_velocity
+    @scale_body_speeds!
 
 function scale(vector, scalar)
   answer = vector.Copy!
@@ -116,7 +124,7 @@ Chem.onReady ->
   physics_per_second = 0
   times = []
   let
-    gravity = new b2Vec2 0, 1
+    gravity = new b2Vec2 0, 0
     world := new b2World gravity, true
 
     for i from 0 to 4
@@ -142,16 +150,27 @@ Chem.onReady ->
       continue if i is 0
       if engine.buttonJustPressed Chem.Button["Key_#{i}"]
         acceleration = if engine.buttonState Chem.Button.Key_Shift then -1 else 1
+        acceleration *= 0.25
         time.accelerate acceleration
 
     # catch up the world to what we expect
     total_dt = 0
     while total_dt < real_dt
-      world.Step min_dt, 1, 1
-      for time of times
-        time.step!
-      world.ClearForces!
+      step min_dt
       total_dt += min_dt
+
+  step = !(dt) ->
+    # apply gravity
+    for time of times
+      continue unless time.speed > 0
+      for body of time.bodies
+        gravity = body.GetMass!*time.speed
+        body.ApplyForce new b2Vec2(0, gravity), body.GetPosition!
+
+    world.Step dt, 1, 1
+    for time of times
+      time.step!
+    world.ClearForces!
 
 
   engine.on 'draw', (context) ->
@@ -163,8 +182,8 @@ Chem.onReady ->
     for time of times
       context.fillStyle = "rgba(#{time.color},0.5)"
       context.strokeStyle = "rgba(#{time.color},0.9)"
-      for {body, fixture_definition} of time.body_definitions
-        {shape} = fixture_definition
+      for body of time.bodies
+        shape = body.GetFixtureList!.GetShape!
         switch shape.m_type
           case b2Shape.e_circleShape
             center = body.GetPosition!
@@ -220,7 +239,7 @@ Chem.onReady ->
       context.beginPath!
       context.moveTo ui_left+history_width, top
       context.lineTo ui_left+history_width, top+bar_heith
-      context.lineTo ui_left+history_width+time.speed*bar_heith/2, top+bar_heith/2
+      context.lineTo ui_left+history_width+time.speed*bar_heith, top+bar_heith/2
       context.lineTo ui_left+history_width, top
       context.closePath!
       context.fill!
