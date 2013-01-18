@@ -196,13 +196,15 @@ Chem.onReady ->
     engine.drawFps!
 
     # UI is on the right
-    ui_width = 200
-    ui_right_spacing = 10
-    ui_left = engine.size.x - (ui_width + ui_right_spacing)
-    bar_heith = 30
-    bar_spacing = 10
+    const
+      ui_width = 200
+      ui_right_spacing = 10
+      ui_left = engine.size.x - (ui_width + ui_right_spacing)
+      bar_heith = 30
+      bar_spacing = 10
     for time, i of times
       continue if i is 0
+      context.save!
       top = i*(bar_heith + bar_spacing)
       # background
       context.fillStyle = "rgba(0,0,0,0.25)"
@@ -223,6 +225,12 @@ Chem.onReady ->
       context.closePath!
       context.fill!
       context.stroke!
+      # row header uses same colors as for speed
+      context.font = "#{bar_heith}px arial, sans-serif"
+      [text, x, y] = ["#{i}", ui_left-20, top+bar_heith-2]
+      context.fillText text, x, y
+      context.strokeText text, x, y
+      context.restore!
 
   engine.start!
   canvas.focus!
