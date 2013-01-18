@@ -1,16 +1,16 @@
 #depend "chem"
 #depend "Box2dWeb-2.1.a.3" bare
 
-const b2Vec2 = Box2D.Common.Math.b2Vec2
-const b2BodyDef = Box2D.Dynamics.b2BodyDef
-const b2Body = Box2D.Dynamics.b2Body
-const b2FixtureDef = Box2D.Dynamics.b2FixtureDef
-const b2World = Box2D.Dynamics.b2World
-const {b2Shape, b2PolygonShape, b2CircleShape} = Box2D.Collision.Shapes
+const
+  {b2Vec2} = Box2D.Common.Math
+  {b2BodyDef, b2Body, b2FixtureDef, b2World} = Box2D.Dynamics
+  {b2Shape, b2PolygonShape, b2CircleShape} = Box2D.Collision.Shapes
 
 class Time
   (@world) ~>
     @speed = 0
+    @elapsed = 0
+    @max_elapsed = 1000
     @body_definitions = []
     @history = []
     @color = [0,0,0]
@@ -50,31 +50,41 @@ class Time
       definition.body = @world.CreateBody definition.body_definition
       definition.body.CreateFixture definition.fixture_definition
 
-  speed_up: !->
-    return if @speed >= 1
-    @speed++
-    if @speed is 1
+  accelerate: !(acceleration) ->
+    old_speed = @speed
+    @speed = clamp @speed+acceleration, -1, 1
+    if old_speed <= 0 and @speed > 0
       # get these suckers going
       @create_bodies b2Body.b2_dynamicBody
-      @restore_from_history 1, @history[@history.length-1]
-  slow_down: !->
-    return if @speed <= -1
-    @speed--
-    if @speed is 0
+      @load_history_frame @history[@history.length-1]
+    else if old_speed > 0 and @speed <= 0
       # turn these bodies into oblivious kinematics
       @create_bodies b2Body.b2_kinematicBody
-      @restore_from_history 0, @history[@history.length-1]
+      @load_history_frame @history[@history.length-1]
+    @set_body_speeds!
+
+  set_body_speeds: !->
+    # adjust the bodies to their new speed
+    for {body} of @body_definitions
+      body.SetLinearVelocity scale body.GetLinearVelocity!, @speed
+      body.SetAngularVelocity body.GetAngularVelocity! * @speed
 
   step: !->
-    if @speed > 0
+    @elapsed += @speed
+    elapsed_before_clamping = @elapsed
+    @elapsed = clamp @elapsed, 0, @max_elapsed
+    if @elapsed is not elapsed_before_clamping
+      # stop time here at the boundary
+      @accelerate -@speed
+    if @history.length + 1 < @elapsed
       @store_history!
-    else if @speed < 0
-      @restore_from_history -1, @history.pop!
+    if @history.length - 1 >= @elapsed
+      @load_history_frame @history.pop!
+      @set_body_speeds!
 
   store_history: !->
     history_frame = []
-    for definition of @body_definitions
-      body = definition.body
+    for {body} of @body_definitions
       history_frame.push(
         position: body.GetPosition!.Copy!
         angle: body.GetAngle!
@@ -83,12 +93,12 @@ class Time
       )
     @history.push history_frame
 
-  restore_from_history: !(velocity_scale, history_frame) ->
+  load_history_frame: !(history_frame) ->
     history_frame ?= @initial_frame
     for state, i of history_frame
       @body_definitions[i].body.SetPositionAndAngle state.position, state.angle
-      @body_definitions[i].body.SetLinearVelocity scale state.velocity, velocity_scale
-      @body_definitions[i].body.SetAngularVelocity state.angular_velocity * velocity_scale
+      @body_definitions[i].body.SetLinearVelocity state.velocity
+      @body_definitions[i].body.SetAngularVelocity state.angular_velocity
 
 function scale(vector, scalar)
   answer = vector.Copy!
@@ -131,10 +141,8 @@ Chem.onReady ->
       # time 0 is the statics
       continue if i is 0
       if engine.buttonJustPressed Chem.Button["Key_#{i}"]
-        if engine.buttonState Chem.Button.Key_Shift
-          time.slow_down!
-        else
-          time.speed_up!
+        acceleration = if engine.buttonState Chem.Button.Key_Shift then -1 else 1
+        time.accelerate acceleration
 
     # catch up the world to what we expect
     total_dt = 0
@@ -189,7 +197,8 @@ Chem.onReady ->
 
     # UI is on the right
     ui_width = 200
-    ui_left = engine.size.x - ui_width
+    ui_right_spacing = 10
+    ui_left = engine.size.x - (ui_width + ui_right_spacing)
     bar_heith = 30
     bar_spacing = 10
     for time, i of times
@@ -200,7 +209,7 @@ Chem.onReady ->
       context.fillRect ui_left, top, ui_width, bar_heith
       # history
       context.fillStyle = "rgba(#{time.color},0.5)"
-      history_percent = time.history.length / 1000
+      history_percent = time.history.length / time.max_elapsed
       history_width = ui_width*history_percent
       context.fillRect ui_left, top, history_width, bar_heith
       # speed
