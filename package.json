@@ -1,5 +1,5 @@
 {
-  "name": "vapor",
+  "name": "just-n-time",
   "description": "blah",
   "author": "Josh Wolfe <thejoshwolfe@gmail.com>",
   "version": "0.0.0",
@@ -8,7 +8,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/thejoshwolfe/vapor.git"
+    "url": "git://github.com/thejoshwolfe/just-n-time.git"
   },
   "dependencies": {
     "chem": "~0.1.4",
