@@ -1,4 +1,5 @@
-node_modules/
-public/spritesheet.png
-public/animations.json
-public/main.js
+/node_modules/
+/public/spritesheet.png
+/public/animations.json
+/public/main.js
+/public/bootstrap.js

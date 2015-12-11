@@ -11,10 +11,11 @@
     "url": "git://github.com/thejoshwolfe/just-n-time.git"
   },
   "dependencies": {
-    "chem": "~0.1.4",
+    "chem": "~4.1.1",
+    "chem-cli": "~1.5.0",
     "coco": "~0.7.6"
   },
   "scripts": {
-    "dev": "npm install . && chem dev --port=53182"
+    "dev": "npm install . && mkdir -p public/img public/text public/sfx && chem dev --port=53182"
   }
 }

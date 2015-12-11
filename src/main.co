@@ -1,5 +1,9 @@
 #depend "chem"
 
+window.Chem = require("chem")
+Chem.Vec2d = Chem.vec2d
+Chem.Button = Chem.button
+
 const
   {b2Vec2} = Box2D.Common.Math
   {b2BodyDef, b2Body, b2FixtureDef, b2World} = Box2D.Dynamics
@@ -113,9 +117,16 @@ function scale(vector, scalar)
   answer.y *= scalar
   answer
 
-Chem.onReady ->
+Chem.resources.on "ready", ->
   const canvas = document.getElementById "game"
   const engine = new Chem.Engine canvas
+  const fpsLabel = engine.createFpsLabel()
+  fpsLabel.fillStyle = "#000"
+
+  engine.buttonCaptureExceptions[Chem.button.KeyCtrl] = true
+  engine.buttonCaptureExceptions[Chem.button.KeyAlt] = true
+  for i from 1 to 12
+    engine.buttonCaptureExceptions[Chem.button["KeyF#{i}"]] = true
 
   # GIMME THE FIZZAQS!
   world = null
@@ -147,8 +158,8 @@ Chem.onReady ->
     for time, i of times
       # time 0 is the statics
       continue if i is 0
-      if engine.buttonJustPressed Chem.Button["Key_#{i}"]
-        acceleration = if engine.buttonState Chem.Button.Key_Shift then -1 else 1
+      if engine.buttonJustPressed Chem.Button["Key#{i}"]
+        acceleration = if engine.buttonState Chem.Button.KeyShift then -1 else 1
         acceleration *= 0.25
         time.accelerate acceleration
 
@@ -211,7 +222,7 @@ Chem.onReady ->
 
     # draw a little fps counter in the corner
     context.fillStyle = '#000'
-    engine.drawFps!
+    fpsLabel.draw context
 
     # UI is on the right
     const
